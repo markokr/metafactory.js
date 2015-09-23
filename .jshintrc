@@ -1,0 +1,19 @@
+{
+    "bitwise": true,
+    "camelcase": true,
+    "eqeqeq": true,
+    "es3": true,
+    "forin": true,
+    "freeze": true,
+    "noarg": true,
+    "undef": true,
+    "unused": "vars",
+
+    "es5": false,
+    "nocomma": false,
+    "singleGroups": false,
+
+    "eqnull": true,
+
+    "predef": ["define", "module"]
+}

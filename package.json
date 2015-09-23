@@ -1,0 +1,38 @@
+{
+  "name": "metafactory",
+  "description": "Composable Object Factories",
+  "version": "0.9.0",
+  "homepage": "https://github.com/markokr/metafactory.js",
+  "license": "MIT",
+  "author": {
+    "name": "Marko Kreen",
+    "email": "markokr@gmail.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/markokr/metafactory.js"
+  },
+  "bugs": {
+    "url": "https://github.com/markokr/metafactory/issues"
+  },
+  "scripts": {
+    "test": "grunt"
+  },
+  "main": "metafactory.js",
+  "keywords": [
+    "stamp",
+    "factory",
+    "object"
+  ],
+  "dependencies": {},
+  "devDependencies": {
+    "grunt": "~0.4.5",
+    "grunt-contrib-clean": "~0.6.0",
+    "grunt-contrib-copy": "~0.8.0",
+    "grunt-contrib-jshint": "~0.11.0",
+    "grunt-contrib-nodeunit": "~0.4.1",
+    "grunt-contrib-uglify": "~0.9.0",
+    "grunt-istanbul": "~0.6.0",
+    "grunt-node-qunit": "~2.0.0"
+  }
+}
