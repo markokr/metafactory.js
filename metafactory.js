@@ -34,6 +34,22 @@ var createObject = Object.create ||     /* istanbul ignore next: compat */
         };
     })();
 
+var assignObject = Object.assign ||     /* istanbul ignore next: compat */
+    function (dst) {
+        var i, src, k;
+        for (i = 1; i < arguments.length; i++) {
+            src = arguments[i];
+            if (isObject(src) || isFunction(src)) {
+                for (k in src) {
+                    if (hasOwnProperty.call(src, k)) {
+                        dst[k] = src[k];
+                    }
+                }
+            }
+        }
+        return dst;
+    };
+
 var isArray = Array.isArray ||          /* istanbul ignore next: compat */
     function (a) { return toString.call(a) === "[object Array]"; };
 
@@ -57,6 +73,7 @@ function error(msg) {
  * Deep clone single value
  */
 
+// FIXME: weird objects
 function deepClone(arg) {
     var res, k, v, i;
 
@@ -129,38 +146,6 @@ function deepMerge(dst) {
 }
 
 /*
- * extendOwn(dst, obj, [obj...])
- *
- * Copy own properties from source objects to target.
- */
-function extendOwn(dst) {
-    var i, src, k;
-    for (i = 1; i < arguments.length; i++) {
-        src = arguments[i];
-        for (k in src) {
-            if (hasOwnProperty.call(src, k)) {
-                dst[k] = src[k];
-            }
-        }
-    }
-    return dst;
-}
-
-/*
- * Clone both own and prototype properties to target.
- */
-
-function extendDeepChain(dst, src) {
-    /* jshint forin:false */
-    var k, v;
-    for (k in src) {
-        v = src[k];
-        dst[k] = isObject(v) ? deepClone(v) : v;
-    }
-    return dst;
-}
-
-/*
  * loadFunctions(dst, fn, ...fn)
  * loadFunctions(dst, [fn, fn, ... ])
  *
@@ -172,7 +157,7 @@ function loadFunctions(dst) {
 
     function loadOne(fn) {
         if (!isFunction(fn)) {
-            error('enclose argument must be an function or list/object containing functions');
+            error('expect function or list/object containing functions as init');
         }
         dst.push(fn);
     }
@@ -198,12 +183,28 @@ function loadFunctions(dst) {
 }
 
 /*
+ * Combine factory states.
+ */
+
+function mergeState(dst, src) {
+    if (src) {
+        deepMerge(dst.props, src.props);
+        assignObject(dst.refs, src.refs);
+        assignObject(dst.statics, src.statics);
+        assignObject(dst.methods, src.methods);
+        loadFunctions(dst.init, src.init);
+    }
+    return dst;
+}
+
+/*
  * Methods under top-level metaFactory function.
  */
 
 function isStamp(o) {
     return isFunction(o) &&
-        isFunction(o.state) && isFunction(o.enclose) &&
+        isFunction(o.refs) && isFunction(o.init) &&
+        isFunction(o.statics) && isFunction(o.props) &&
         isFunction(o.methods) && isObject(o.fixed);
 }
 
@@ -213,26 +214,17 @@ function isStamp(o) {
  * Create new factory by combining arguments.
  */
 function composeFactories() {
-    var state = {};
-    var methods = {};
-    var enclose = [];
-    var i, fixed;
-
+    var i;
+    var opts = {
+        refs: {}, props: {}, statics: {}, methods: {}, init: []
+    };
     for (i = 0; i < arguments.length; i++) {
         if (!isStamp(arguments[i])) {
             error('compose: Argument must be a factory');
         }
-        fixed = arguments[i].fixed;
-        deepMerge(state, fixed.state);
-        deepMerge(methods, fixed.methods);
-        loadFunctions(enclose, fixed.enclose);
+        mergeState(opts, arguments[i].fixed);
     }
-    return metaFactory(methods, state, enclose);
-}
-
-function convertConstructor(fn) {
-    var flatProto = extendDeepChain({}, fn.prototype);
-    return metaFactory(flatProto, {}, fn);
+    return metaFactory(opts);
 }
 
 /*
@@ -243,26 +235,47 @@ var factoryMethods = {
 
     // Return new factory that combines methods from currenct factory with given args
     methods: function methods() {
-        var fixed = this.fixed;
-        var args = [{}, fixed.methods];
+        var opts = assignObject({}, this.fixed);
+        var args = [{}, opts.methods];
         push.apply(args, arguments);
-        return metaFactory(deepMerge.apply(null, args), fixed.state, fixed.enclose);
+        opts.methods = assignObject.apply(null, args);
+        return metaFactory(opts);
     },
 
-    // Return new factory that combines state from currenct factory with given args
-    state: function state() {
-        var fixed = this.fixed;
-        var args = [{}, fixed.state];
+    // Return new factory that combines refs from currenct factory with given args
+    refs: function refs() {
+        var opts = assignObject({}, this.fixed);
+        var args = [{}, opts.refs];
         push.apply(args, arguments);
-        return metaFactory(fixed.methods, deepMerge.apply(null, args), fixed.enclose);
+        opts.refs = assignObject.apply(null, args);
+        return metaFactory(opts);
+    },
+
+    // Return new factory that combines props from currenct factory with given args
+    props: function props() {
+        var opts = assignObject({}, this.fixed);
+        var args = [{}, opts.props];
+        push.apply(args, arguments);
+        opts.props = deepMerge.apply(null, args);
+        return metaFactory(opts);
+    },
+
+    // Return new factory that combines props from currenct factory with given args
+    statics: function statics() {
+        var opts = assignObject({}, this.fixed);
+        var args = [{}, opts.statics];
+        push.apply(args, arguments);
+        opts.statics = assignObject.apply(null, args);
+        return metaFactory(opts);
     },
 
     // Return new factory that combines constructors from currenct factory with given args
-    enclose: function enclose() {
-        var fixed = this.fixed;
-        var args = [fixed.enclose.slice()];
+    init: function init() {
+        var opts = assignObject({}, this.fixed);
+        var args = [opts.init.slice()];
         push.apply(args, arguments);
-        return metaFactory(fixed.methods, fixed.state, loadFunctions.apply(null, args));
+        opts.init = loadFunctions.apply(null, args);
+        return metaFactory(opts);
     },
 
     // Return new factory that combines from currenct factory with given args
@@ -279,67 +292,105 @@ var factoryMethods = {
 };
 
 /*
+ * Static methods for top-level metaFactory function.
+ */
+
+function convertConstructor(fn) {
+    return metaFactory({
+        methods: assignObject({}, fn.prototype),      // FIXME: copy non-own too?
+        statics: assignObject({}, fn),
+        init: fn
+    });
+}
+
+function makeShortcut(fn) {
+    return function() {
+        return fn.apply(metaFactory(), arguments);
+    };
+}
+
+var utilityFunctions = {
+    compose: composeFactories,
+    isStamp: isStamp,
+    convertConstructor: convertConstructor,
+
+    init: makeShortcut(factoryMethods.init),
+    methods: makeShortcut(factoryMethods.methods),
+    props: makeShortcut(factoryMethods.props),
+    refs: makeShortcut(factoryMethods.refs),
+    statics: makeShortcut(factoryMethods.statics)
+};
+
+/*
+ * Promise-based init helpers.
+ */
+
+function promiseInit(factory, promise, initfunc, lastObj, args) {
+    return promise.then(function (obj) {
+        var argobj = {args: args, instance: obj || lastObj, stamp: factory};
+        return initfunc.call(argobj.instance, argobj) || argobj.instance;
+    });
+}
+
+function returnInstance(argobj) {
+    return argobj.instance;
+}
+
+/*
  * Main function that creates factories.
  */
 
-function metaFactory(methods, state, enclose) {
+function metaFactory(options) {
 
-    function factory(newState) {
+    // instance factory - fast path
+    function factory(instanceRefs) {
         var fixed = factory.fixed;
-        var enclist = fixed.enclose;
-        var encnum = enclist.length;
+        var init = fixed.init;
+        var numinit = init.length;
         var i, args, nargs;
+        var res, argobj;
 
         // prepare initial object
         var obj = createObject(fixed.methods);
-        extendDeepChain(obj, fixed.state);
+        deepMerge(obj, fixed.props);
+        assignObject(obj, fixed.refs, instanceRefs);
 
-        // insert extra state
-        if (newState != null) {
-            if (isObject(newState)) {
-                extendOwn(obj, newState);
-            } else {
-                error('factory: new state must be object');
-            }
-        }
-
-        // run enclosure functions
-        if (encnum > 0) {
+        if (numinit > 0) {
+            // build args
             nargs = arguments.length ? (arguments.length - 1) : 0;
             args = new Array(nargs);
             for (i = 0; i < nargs; i++) {
                 args[i] = arguments[i + 1];
             }
 
-            for (i = 0; i < encnum; i++) {
-                obj = enclist[i].apply(obj, args) || obj;
+            // run init functions
+            argobj = { args: args, instance: obj, stamp: factory };
+            for (i = 0; i < numinit; i++) {
+                res = init[i].call(obj, argobj);
+                if (res) {
+                    if (isFunction(res.then)) {
+                        // use separate path for promise-based init
+                        for (i++; i < numinit; i++) {
+                            res = promiseInit(factory, res, init[i], obj, args);
+                        }
+                        return promiseInit(factory, res, returnInstance, obj, args);
+                    }
+                    argobj.instance = obj = res;
+                }
             }
         }
 
         return obj;
     }
 
-    factory.fixed = {
-        methods: deepMerge(factory.prototype, methods),
-        state: deepMerge({}, state),
-        enclose: loadFunctions([], enclose)
-    };
-
-    return extendOwn(factory, factoryMethods);
+    // add state to 'factory' function
+    var fixed = {methods: factory.prototype, refs: {}, props: {}, statics: {}, init: []};
+    mergeState(fixed, options);
+    return assignObject(factory, factoryMethods, fixed.statics, {fixed: fixed});
 }
 
 // export metaFactory, add utility methods
-return extendOwn(metaFactory, {
-    compose: composeFactories,
-    isStamp: isStamp,
-    convertConstructor: convertConstructor,
-
-    mixIn: extendOwn,
-    extend: extendOwn,
-
-    clone: deepClone,
-    merge: deepMerge
-});
+return assignObject(metaFactory, utilityFunctions);
 
 }));
 

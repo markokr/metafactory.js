@@ -59,7 +59,7 @@ module.exports = function(grunt) {
     grunt.loadNpmTasks("grunt-node-qunit");
     grunt.loadNpmTasks("grunt-istanbul");
 
-    grunt.registerTask("default", ["jshint", "node-qunit", "cov", "uglify"]);
+    grunt.registerTask("default", ["jshint", "uglify", "node-qunit", "cov"]);
     grunt.registerTask('cov', ['clean', 'copy', 'instrument', 'nodeunit:coverage', 'storeCoverage', 'makeReport']);
     grunt.registerTask('test', [ 'node-qunit', 'nodeunit:test' ]);
 };
